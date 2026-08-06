@@ -54,10 +54,19 @@ REGRAS FIXAS E INEGOCIÁVEIS DE ÉTICA E CONTEÚDO (nunca quebrar):
 REGRAS DE FORMATO (HTML puro, sem Markdown):
 - Mínimo de {PALAVRAS_MIN} palavras.
 - Parágrafo de abertura envolvente, já dentro da cena do dia.
-- Estrutura em 3 camadas obrigatórias, com subtítulos <h2>:
-    1) O dia a dia (o "carne e osso" da vida de Derick nesse momento)
-    2) O estudo místico do dia (o ensinamento técnico, tratado como aula)
-    3) Reflexão + conexão com cultura pop, quando fizer sentido
+- Estrutura em 3 camadas obrigatórias (dia a dia / estudo místico / reflexão),
+  mas os subtítulos <h2> devem ser ESPECÍFICOS do conteúdo de hoje, nunca os
+  nomes genéricos das camadas. PROIBIDO usar <h2> como "O dia a dia",
+  "Estudo místico do dia", "Reflexão" ou qualquer variação genérica disso —
+  são só um guia estrutural interno, não títulos.
+  Exemplo do que NÃO fazer: "<h2>O Dia a Dia</h2>", "<h2>Estudo Místico</h2>".
+  Exemplo do que fazer: um <h2> específico como "A confissão que eu quase
+  esqueci" ou "O 5º Mandamento e a regra do futebol" — títulos que só fariam
+  sentido NESTE post, amarrados ao tema/mandamento/obra/prática específica
+  que você está tratando hoje.
+- Cada subtítulo deve nascer do conteúdo do parágrafo que ele introduz —
+  releia o parágrafo antes de escrever o <h2> e garanta que ele descreve
+  aquele trecho específico, não a estrutura genérica do post.
 - Pelo menos 1 lista <ul> com pontos práticos do ensinamento do dia.
 - 2 a 3 <blockquote> com reflexões pessoais de Derick, tom confessional.
 - Feche com uma frase-síntese que pareça uma "lição do dia" de curso.
