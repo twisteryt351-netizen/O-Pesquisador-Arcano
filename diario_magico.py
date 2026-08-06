@@ -106,6 +106,49 @@ def gerar_titulo(estado, temas_usados):
 
 
 # ─────────────────────────────────────────────────────────────
+#  TAGS / MARCADORES (Blogger "labels")
+#  O Blogger tem um campo próprio pra isso na API — não adianta
+#  só pedir pra IA "incluir tags" dentro do texto, tem que extrair
+#  numa lista e mandar no campo "labels" do post.
+# ─────────────────────────────────────────────────────────────
+MAX_TAGS = 8
+
+def gerar_tags(estado, temas_usados, titulo):
+    fase_nome = FASES[estado["fase"]]["nome"]
+    resumo = ", ".join(str(t) for t in temas_usados)
+    prompt = f"""
+Gere de 5 a {MAX_TAGS} marcadores/tags (labels) para um post de blog em português do Brasil.
+
+Título do post: "{titulo}"
+Fase da vida do personagem: {fase_nome}
+Temas do dia: {resumo}
+
+Regras:
+- Tags curtas (1 a 3 palavras cada), sem "#", sem numeração.
+- Misture tags específicas do tema do dia com tags amplas do nicho
+  (ex: "diário místico", "ocultismo", "desenvolvimento espiritual"),
+  pra ajudar tanto na navegação do blog quanto em SEO.
+- Não repita o título literalmente como tag.
+
+Retorne APENAS um array JSON válido de strings, nada mais.
+Exemplo: ["tag um", "tag dois", "tag tres"]
+"""
+    raw = pedir_ia_groq(prompt, temperatura=0.5)
+    match = re.search(r'\[.*?\]', raw, re.DOTALL)
+    if match:
+        try:
+            tags = json.loads(match.group())
+            if isinstance(tags, list):
+                tags_limpas = [str(t).strip() for t in tags if str(t).strip()]
+                return tags_limpas[:MAX_TAGS]
+        except Exception:
+            pass
+    # fallback simples se a IA não retornar JSON válido
+    linhas = [l.strip(" -\"'") for l in raw.split(",") if l.strip()]
+    return linhas[:MAX_TAGS] if linhas else [fase_nome]
+
+
+# ─────────────────────────────────────────────────────────────
 #  PROMPTS DE IMAGEM
 # ─────────────────────────────────────────────────────────────
 def gerar_prompts_imagens(estado, titulo, num_imagens=3):
@@ -275,10 +318,12 @@ def obter_credenciais():
     return creds
 
 
-def publicar_no_blogger(titulo, conteudo):
+def publicar_no_blogger(titulo, conteudo, tags=None):
     creds = obter_credenciais()
     blogger = build("blogger", "v3", credentials=creds)
     corpo = {"kind": "blogger#post", "title": titulo, "content": conteudo}
+    if tags:
+        corpo["labels"] = tags
     res = blogger.posts().insert(blogId=BLOGGER_ID, body=corpo).execute()
     print(f"🔮 Postado: '{titulo}' -> {res.get('url')}")
 
@@ -309,6 +354,10 @@ if __name__ == "__main__":
     titulo = gerar_titulo(estado, temas_usados)
     print(f"✏️  Título: {titulo}")
 
+    print("🏷️  Gerando tags/marcadores...")
+    tags = gerar_tags(estado, temas_usados, titulo)
+    print(f"🏷️  Tags: {tags}")
+
     print("🖊️  Gerando prompts de imagem...")
     prompts_imagem = gerar_prompts_imagens(estado, titulo, num_imagens=3)
 
@@ -318,7 +367,7 @@ if __name__ == "__main__":
     )
 
     html_final = montar_html(corpo, imagens_html, estado)
-    publicar_no_blogger(titulo, html_final)
+    publicar_no_blogger(titulo, html_final, tags=tags)
 
     # Atualiza estado: registra temas/título/marco e avança o tempo narrativo
     for tema in temas_usados:
