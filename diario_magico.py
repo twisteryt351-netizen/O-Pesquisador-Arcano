@@ -160,31 +160,41 @@ non-graphic tone (no gore, no blood, no explicit content).
 Life phase mood: {moodboard}
 Article title: "{titulo}"
 
-Create exactly {num_imagens} image generation prompt(s) in English:
-- Prompt 1 (COVER): eye-catching but tasteful thumbnail-style image matching the mood above.
+Create exactly {num_imagens} image concepts:
+- Image 1 (COVER): eye-catching but tasteful thumbnail-style image matching the mood above.
   Cinematic lighting, photorealistic or painterly, 8k quality, no text or watermarks.
-- Remaining prompts: conceptual/emotional scenes that illustrate specific moments described
-  in the article, matching the same mood and phase.
+- Remaining images: conceptual/emotional scenes that illustrate DIFFERENT, DISTINCT specific
+  moments described in the article, matching the same mood and phase. Each one must depict a
+  clearly different scene from the others (no two images of "the same moment").
 
-Rules for ALL prompts:
-- One vivid descriptive paragraph each, no numbering or labels.
-- No text, logos or words inside images. No gore, no blood, no explicit/sexual content.
-- Warm, respectful, cinematic tone throughout.
+For EACH image, provide:
+- "prompt": one vivid descriptive paragraph in ENGLISH for the image generator. No text, logos
+  or words inside images. No gore, no blood, no explicit/sexual content.
+- "legenda": a short caption in BRAZILIAN PORTUGUESE (under 12 words) describing what the image
+  shows, written like a photo caption a reader would see under the image — not a repeat of the
+  article title.
 
-Return ONLY a valid JSON array of {num_imagens} strings, nothing else.
-Example: ["prompt one", "prompt two", "prompt three"]
+Return ONLY a valid JSON array of {num_imagens} objects, nothing else.
+Example: [{{"prompt": "...", "legenda": "..."}}, {{"prompt": "...", "legenda": "..."}}]
 """
     raw = pedir_ia_groq(prompt, temperatura=0.6)
-    match = re.search(r'\[.*?\]', raw, re.DOTALL)
+    match = re.search(r'\[.*\]', raw, re.DOTALL)
     if match:
         try:
-            prompts = json.loads(match.group())
-            if isinstance(prompts, list):
-                return [str(p).strip() for p in prompts[:num_imagens]]
+            itens = json.loads(match.group())
+            if isinstance(itens, list) and all(isinstance(i, dict) for i in itens):
+                resultado = [
+                    {"prompt": str(i.get("prompt", "")).strip(),
+                     "legenda": str(i.get("legenda", "")).strip()}
+                    for i in itens[:num_imagens]
+                ]
+                if all(r["prompt"] for r in resultado):
+                    return resultado
         except Exception:
             pass
-    linhas = [l.strip().strip('"').strip("'") for l in raw.split('\n') if l.strip()]
-    return linhas[:num_imagens] if linhas else [f"{moodboard}, 8k photorealistic"]
+    # fallback: sem legenda estruturada, usa o moodboard puro
+    return [{"prompt": f"{moodboard}, 8k photorealistic, scene {i+1}", "legenda": ""}
+            for i in range(num_imagens)]
 
 
 # ─────────────────────────────────────────────────────────────
@@ -229,6 +239,30 @@ def hospedar_imgbb(b64_data, nome="mago_img"):
     return resultado["data"]["url"]
 
 
+def verificar_url_imagem(url, tentativas=5, espera_segundos=2):
+    """Confirma que a URL da imagem já está de fato acessível antes de
+    usar no post. O ImgBB (e às vezes o Pollinations) podem levar alguns
+    segundos pra propagar no CDN deles — sem essa checagem, o post é
+    publicado com um link que ainda dá 404/timeout, e só passa a
+    funcionar quando o Blogger recarrega o conteúdo depois (ex: ao
+    clicar em 'Atualizar')."""
+    for tentativa in range(1, tentativas + 1):
+        try:
+            resp = requests.head(url, timeout=10, allow_redirects=True)
+            if resp.status_code == 200:
+                return True
+            # alguns hosts não respondem bem a HEAD, tenta GET como fallback
+            if resp.status_code in (403, 405):
+                resp = requests.get(url, timeout=10, stream=True)
+                if resp.status_code == 200:
+                    return True
+        except requests.RequestException:
+            pass
+        if tentativa < tentativas:
+            time.sleep(espera_segundos)
+    return False
+
+
 def buscar_imagens_openverse(palavra_chave, quantidade=3):
     try:
         resposta = requests.get(
@@ -245,40 +279,56 @@ def buscar_imagens_openverse(palavra_chave, quantidade=3):
         return [IMAGEM_PADRAO]
 
 
-def html_imagem_blogger(src, alt_title, height=360, width=640):
+def html_imagem_blogger(src, alt_title, legenda="", height=360, width=640):
+    legenda_html = ""
+    if legenda:
+        legenda_html = (
+            f'<div style="font-size:13px;color:#777;font-style:italic;'
+            f'text-align:center;margin-top:6px;margin-bottom:20px;">{legenda}</div>'
+        )
     return (
         '<table align="center" cellpadding="0" cellspacing="0" '
         'class="tr-caption-container" '
-        'style="margin-left:auto;margin-right:auto;margin-bottom:24px;">'
+        'style="margin-left:auto;margin-right:auto;margin-bottom:8px;">'
         '<tbody><tr><td style="text-align:center;">'
-        f'<img alt="{alt_title}" border="0" height="{height}" src="{src}" '
-        f'title="{alt_title}" width="{width}" '
+        f'<img alt="{legenda or alt_title}" border="0" height="{height}" src="{src}" '
+        f'title="{legenda or alt_title}" width="{width}" '
         'style="max-width:100%;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.12);" />'
-        '</td></tr></tbody></table><br />'
+        '</td></tr></tbody></table>'
+        f'{legenda_html}'
     )
 
 
-def obter_imagens_html(prompts, titulo, palavra_fallback):
+def obter_imagens_html(itens_imagem, titulo, palavra_fallback):
+    """itens_imagem: lista de dicts {'prompt':..., 'legenda':...}"""
     imagens_html = []
     openverse_cache = None
-    for i, prompt_img in enumerate(prompts):
+    for i, item in enumerate(itens_imagem):
+        prompt_img = item["prompt"]
+        legenda = item.get("legenda", "")
         src = None
         try:
-            print(f"  🖼️  [{i+1}/{len(prompts)}] Gerando via Pollinations.ai...")
+            print(f"  🖼️  [{i+1}/{len(itens_imagem)}] Gerando via Pollinations.ai...")
             b64 = gerar_imagem_worker_b64(prompt_img, ratio="16:9")
             try:
-                src = hospedar_imgbb(b64, nome=f"mago_{titulo[:40].replace(' ','_')}_{i+1}")
+                url_imgbb = hospedar_imgbb(b64, nome=f"mago_{titulo[:40].replace(' ','_')}_{i+1}")
+                print(f"  ⏳ Confirmando que a URL do ImgBB já está acessível...")
+                if verificar_url_imagem(url_imgbb):
+                    src = url_imgbb
+                    print(f"  ✅ URL confirmada: {url_imgbb}")
+                else:
+                    raise ValueError("URL do ImgBB não respondeu 200 depois de várias tentativas.")
             except Exception as e_imgbb:
-                print(f"  ⚠️  ImgBB falhou ({e_imgbb}). Usando data URI...")
+                print(f"  ⚠️  ImgBB falhou/não propagou ({e_imgbb}). Usando data URI...")
                 src = f"data:image/png;base64,{b64}"
         except Exception as e_ia:
             print(f"  ⚠️  Pollinations.ai falhou ({e_ia}). Buscando no Openverse...")
             if openverse_cache is None:
-                openverse_cache = buscar_imagens_openverse(palavra_fallback, quantidade=len(prompts))
+                openverse_cache = buscar_imagens_openverse(palavra_fallback, quantidade=len(itens_imagem))
             src = openverse_cache[i % len(openverse_cache)]
         altura = 420 if i == 0 else 300
-        imagens_html.append(html_imagem_blogger(src, titulo, height=altura))
-        if i < len(prompts) - 1:
+        imagens_html.append(html_imagem_blogger(src, titulo, legenda=legenda, height=altura))
+        if i < len(itens_imagem) - 1:
             time.sleep(INTERVALO_POLLINATIONS)
     return imagens_html
 
@@ -287,13 +337,32 @@ def obter_imagens_html(prompts, titulo, palavra_fallback):
 #  MONTAGEM DO HTML FINAL
 # ─────────────────────────────────────────────────────────────
 def montar_html(corpo_artigo, imagens_html, estado):
-    html_corpo = corpo_artigo
-    for idx in range(1, len(imagens_html)):
-        marcador = f"<!--IMG_{idx + 1}-->"
-        if marcador in html_corpo:
-            html_corpo = html_corpo.replace(marcador, imagens_html[idx], 1)
+    capa = imagens_html[0]
+    extras = imagens_html[1:]
+
+    if not extras:
+        corpo_final = corpo_artigo
+    else:
+        # Acha onde cada <h2> começa no texto — cada seção do artigo
+        # (dia a dia / estudo místico / reflexão) começa com um <h2>.
+        posicoes_h2 = [m.start() for m in re.finditer(r'<h2\b', corpo_artigo, flags=re.IGNORECASE)]
+
+        if not posicoes_h2:
+            # não achou nenhum <h2> pra ancorar — melhor colocar as imagens
+            # no fim do que quebrar a formatação tentando adivinhar posição
+            corpo_final = corpo_artigo + "".join(extras)
         else:
-            html_corpo += imagens_html[idx]
+            # pula a 1ª seção (que já vem logo depois da capa) e espalha
+            # as imagens restantes pelas seções seguintes
+            alvos = posicoes_h2[1:] if len(posicoes_h2) > 1 else posicoes_h2
+            passo = max(1, len(alvos) // len(extras))
+            posicoes_escolhidas = [alvos[min(i * passo, len(alvos) - 1)] for i in range(len(extras))]
+
+            # insere de trás pra frente, senão os índices calculados
+            # ficam inválidos assim que a 1ª inserção desloca o texto
+            corpo_final = corpo_artigo
+            for pos, img in sorted(zip(posicoes_escolhidas, extras), key=lambda par: -par[0]):
+                corpo_final = corpo_final[:pos] + img + corpo_final[pos:]
 
     rodape = (
         '<p style="font-size:12px;color:#999;font-style:italic;margin-top:24px;">'
@@ -303,7 +372,7 @@ def montar_html(corpo_artigo, imagens_html, estado):
         'com fins de reflexão e estudo. Não substitui orientação religiosa, '
         'psicológica ou médica profissional.</p>'
     )
-    return f"{imagens_html[0]}{html_corpo}{rodape}"
+    return f"{capa}{corpo_final}{rodape}"
 
 
 # ─────────────────────────────────────────────────────────────
