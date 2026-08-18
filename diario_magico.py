@@ -15,7 +15,7 @@ from motor_narrativo import (
     registrar_tema, registrar_titulo, registrar_marco, FASES,
 )
 from prompt_engine import (
-    montar_prompt_diario, montar_prompt_titulo, verificar_filtro_etico,
+    montar_prompt_diario, montar_prompt_titulo, verificar_filtro_etico, PALAVRAS_MIN,
 )
 
 # ─────────────────────────────────────────────────────────────
@@ -45,6 +45,14 @@ for nome, valor in [
 groq_client = Groq(api_key=GROQ_API_KEY)
 MODELO_IA   = "openai/gpt-oss-120b"
 
+def _mascarar(valor):
+    if not valor:
+        return "❌ NÃO configurado"
+    return f"✅ configurado ({len(valor)} caracteres, começa com '{valor[:4]}...')"
+
+print(f"🔑 POLLINATIONS_TOKEN: {_mascarar(POLLINATIONS_TOKEN)}")
+print(f"🔑 IMGBB_API_KEY:      {_mascarar(IMGBB_API_KEY)}")
+
 ARQUIVO_HISTORICO_TEXTO = "historico_magico.txt"
 IMAGEM_PADRAO = "https://upload.wikimedia.org/wikipedia/commons/thumb/9/95/News_icon.svg/640px-News_icon.svg.png"
 
@@ -66,11 +74,12 @@ MOODBOARD_FASE = {
 # ─────────────────────────────────────────────────────────────
 #  GROQ (texto)
 # ─────────────────────────────────────────────────────────────
-def pedir_ia_groq(prompt, temperatura=0.78):
+def pedir_ia_groq(prompt, temperatura=0.78, max_tokens=6000):
     response = groq_client.chat.completions.create(
         messages=[{"role": "user", "content": prompt}],
         model=MODELO_IA,
         temperature=temperatura,
+        max_tokens=max_tokens,
     )
     return response.choices[0].message.content.strip()
 
@@ -78,6 +87,71 @@ def pedir_ia_groq(prompt, temperatura=0.78):
 # ─────────────────────────────────────────────────────────────
 #  GERAÇÃO DO ARTIGO DO DIA (com filtro ético em código)
 # ─────────────────────────────────────────────────────────────
+TAGS_BLOCO_PRONTAS = ("<h2", "<h3", "<blockquote", "<div", "<p", "<table", "<ul", "<ol", "<li")
+
+
+def normalizar_para_html(texto):
+    """Rede de segurança contra a IA usar Markdown (## título, **negrito**,
+    > citação) em vez de HTML puro, e contra parágrafos separados só por
+    linha em branco — que o navegador/Blogger colapsa em espaço único,
+    virando uma parede de texto só com '##' aparecendo literalmente."""
+    texto = texto.strip().replace("\r\n", "\n").replace("\r", "\n")
+    blocos = re.split(r'\n\s*\n', texto)
+
+    html_blocos = []
+    for bloco in blocos:
+        bloco = bloco.strip()
+        if not bloco:
+            continue
+        if bloco.lower().startswith(TAGS_BLOCO_PRONTAS):
+            html_blocos.append(bloco)
+            continue
+
+        m = re.match(r'^#{1,3}\s*(.+)$', bloco, flags=re.DOTALL)
+        if m:
+            resto = m.group(1).strip()
+            corte = re.search(r'[.!?]\s+[A-ZÀ-Ú]', resto)
+            if corte and corte.start() < 100:
+                titulo_bloco = resto[:corte.start() + 1].strip()
+                resto_paragrafo = resto[corte.start() + 1:].strip()
+            elif len(resto) > 90:
+                palavras = resto.split()
+                titulo_bloco = " ".join(palavras[:12])
+                resto_paragrafo = " ".join(palavras[12:])
+            else:
+                titulo_bloco, resto_paragrafo = resto, ""
+            html_blocos.append(f"<h2>{titulo_bloco}</h2>")
+            if resto_paragrafo:
+                resto_paragrafo = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', resto_paragrafo)
+                html_blocos.append(f"<p>{resto_paragrafo}</p>")
+            continue
+
+        if bloco.startswith(">"):
+            citado = re.sub(r'^>\s?', '', bloco, flags=re.MULTILINE).strip().replace("\n", "<br>")
+            html_blocos.append(f"<blockquote>{citado}</blockquote>")
+            continue
+
+        if re.match(r'^[-*]\s+', bloco, flags=re.MULTILINE):
+            # lista estilo Markdown ("- item" ou "* item")
+            itens = re.findall(r'^[-*]\s+(.+)$', bloco, flags=re.MULTILINE)
+            if itens:
+                lis = "".join(f"<li>{it.strip()}</li>" for it in itens)
+                html_blocos.append(f"<ul>{lis}</ul>")
+                continue
+
+        paragrafo = bloco.replace("\n", "<br>")
+        paragrafo = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', paragrafo)
+        paragrafo = re.sub(r'(?<!\*)\*([^*\n]+?)\*(?!\*)', r'<em>\1</em>', paragrafo)
+        html_blocos.append(f"<p>{paragrafo}</p>")
+
+    return "\n".join(html_blocos)
+
+
+def contar_palavras_html(texto_html):
+    texto_puro = re.sub(r'<[^>]+>', ' ', texto_html)
+    return len(re.findall(r"[A-Za-zÀ-ÿ]+(?:['’-][A-Za-zÀ-ÿ]+)*", texto_puro))
+
+
 def gerar_artigo_diario(estado, max_tentativas=2):
     prompt, temas_usados, marco_do_dia = montar_prompt_diario(estado)
 
@@ -85,6 +159,24 @@ def gerar_artigo_diario(estado, max_tentativas=2):
         corpo = pedir_ia_groq(prompt, temperatura=0.78)
         violacoes = verificar_filtro_etico(corpo)
         if not violacoes:
+            corpo = normalizar_para_html(corpo)
+            # Se saiu curto (a Groq às vezes encerra antes do pedido),
+            # pede uma continuação real em vez de publicar algo raso.
+            if contar_palavras_html(corpo) < int(PALAVRAS_MIN * 0.8):
+                palavras_atuais = contar_palavras_html(corpo)
+                print(f"  ✏️  Artigo curto ({palavras_atuais} palavras, meta {PALAVRAS_MIN}) "
+                      f"— pedindo continuação...")
+                prompt_continuar = f"""
+O texto abaixo terminou curto demais (menos de {PALAVRAS_MIN} palavras).
+Continue-o EXATAMENTE de onde parou, mesma voz em primeira pessoa de Derick,
+mesmo tom e formato HTML (pode abrir novos <h2> se fizer sentido). NÃO repita
+nada do que já foi escrito — só continue e aprofunde até fechar bem o dia.
+
+TEXTO ATÉ AGORA:
+{corpo}
+"""
+                continuacao = pedir_ia_groq(prompt_continuar, temperatura=0.78)
+                corpo = corpo + "\n" + normalizar_para_html(continuacao)
             return corpo, temas_usados, marco_do_dia
         print(f"  ⚠️  Filtro ético bloqueou tentativa {tentativa}: {violacoes}")
         prompt += (
@@ -203,7 +295,7 @@ Example: [{{"prompt": "...", "legenda": "..."}}, {{"prompt": "...", "legenda": "
 DIMENSOES_RATIO = {"16:9": (1280, 720), "1:1": (1024, 1024), "9:16": (720, 1280)}
 
 
-def gerar_imagem_worker_b64(prompt_img, ratio="16:9"):
+def gerar_imagem_worker_b64(prompt_img, ratio="16:9", tentativas=3):
     largura, altura = DIMENSOES_RATIO.get(ratio, (1280, 720))
     prompt_codificado = urllib.parse.quote(prompt_img)
     url = f"https://image.pollinations.ai/prompt/{prompt_codificado}"
@@ -214,14 +306,30 @@ def gerar_imagem_worker_b64(prompt_img, ratio="16:9"):
     headers = {}
     if POLLINATIONS_TOKEN:
         headers["Authorization"] = f"Bearer {POLLINATIONS_TOKEN}"
-    resp = requests.get(url, params=params, headers=headers, timeout=120)
-    resp.raise_for_status()
-    if "image" not in resp.headers.get("Content-Type", ""):
-        raise ValueError("Resposta não parece ser uma imagem.")
-    b64 = base64.b64encode(resp.content).decode("utf-8")
-    if not b64:
-        raise ValueError("Pollinations.ai retornou imagem vazia.")
-    return b64
+
+    ultimo_erro = None
+    for tentativa in range(1, tentativas + 1):
+        try:
+            resp = requests.get(url, params=params, headers=headers, timeout=120)
+            if resp.status_code != 200:
+                trecho = resp.text[:200].replace("\n", " ")
+                raise ValueError(f"HTTP {resp.status_code} — resposta: {trecho!r}")
+            if "image" not in resp.headers.get("Content-Type", ""):
+                trecho = resp.text[:200].replace("\n", " ")
+                raise ValueError(f"Resposta não é imagem (Content-Type: {resp.headers.get('Content-Type')}) — corpo: {trecho!r}")
+            b64 = base64.b64encode(resp.content).decode("utf-8")
+            if not b64:
+                raise ValueError("Pollinations.ai retornou imagem vazia.")
+            return b64
+        except Exception as e:
+            ultimo_erro = e
+            if tentativa < tentativas:
+                espera = 5 * tentativa
+                print(f"  ⚠️  Pollinations.ai falhou (tentativa {tentativa}/{tentativas}): {e}. "
+                      f"Tentando de novo em {espera}s...")
+                time.sleep(espera)
+                params["seed"] = __import__("random").randint(1, 999999)
+    raise ultimo_erro
 
 
 def hospedar_imgbb(b64_data, nome="mago_img"):
@@ -319,8 +427,14 @@ def obter_imagens_html(itens_imagem, titulo, palavra_fallback):
                 else:
                     raise ValueError("URL do ImgBB não respondeu 200 depois de várias tentativas.")
             except Exception as e_imgbb:
-                print(f"  ⚠️  ImgBB falhou/não propagou ({e_imgbb}). Usando data URI...")
-                src = f"data:image/png;base64,{b64}"
+                # NUNCA usa data URI aqui: o Blogger não gera miniatura nem
+                # sempre renderiza base64 embutido de primeira, o que causava
+                # o "só aparece depois de abrir e atualizar". Sempre cai pra
+                # uma URL externa real (Openverse) em vez disso.
+                print(f"  ⚠️  ImgBB falhou/não propagou ({e_imgbb}). Buscando no Openverse...")
+                if openverse_cache is None:
+                    openverse_cache = buscar_imagens_openverse(palavra_fallback, quantidade=len(itens_imagem))
+                src = openverse_cache[i % len(openverse_cache)]
         except Exception as e_ia:
             print(f"  ⚠️  Pollinations.ai falhou ({e_ia}). Buscando no Openverse...")
             if openverse_cache is None:
@@ -353,10 +467,19 @@ def montar_html(corpo_artigo, imagens_html, estado):
             corpo_final = corpo_artigo + "".join(extras)
         else:
             # pula a 1ª seção (que já vem logo depois da capa) e espalha
-            # as imagens restantes pelas seções seguintes
+            # as imagens restantes do MEIO ao FIM das seções seguintes
+            # (usa a primeira e a última âncora disponível como extremos,
+            # em vez de sempre cair em posições vizinhas no meio do texto)
             alvos = posicoes_h2[1:] if len(posicoes_h2) > 1 else posicoes_h2
-            passo = max(1, len(alvos) // len(extras))
-            posicoes_escolhidas = [alvos[min(i * passo, len(alvos) - 1)] for i in range(len(extras))]
+            if len(extras) == 1:
+                indices = [len(alvos) // 2]
+            else:
+                indices = [round(i * (len(alvos) - 1) / (len(extras) - 1)) for i in range(len(extras))]
+            posicoes_escolhidas = sorted({alvos[i] for i in indices})
+            livres = [a for a in alvos if a not in posicoes_escolhidas]
+            while len(posicoes_escolhidas) < len(extras) and livres:
+                posicoes_escolhidas.append(livres.pop(0))
+            posicoes_escolhidas = sorted(posicoes_escolhidas)[:len(extras)]
 
             # insere de trás pra frente, senão os índices calculados
             # ficam inválidos assim que a 1ª inserção desloca o texto
@@ -394,7 +517,18 @@ def publicar_no_blogger(titulo, conteudo, tags=None):
     if tags:
         corpo["labels"] = tags
     res = blogger.posts().insert(blogId=BLOGGER_ID, body=corpo).execute()
+    post_id = res.get("id")
     print(f"🔮 Postado: '{titulo}' -> {res.get('url')}")
+
+    # Automatiza o "abrir e atualizar" manual: o Blogger às vezes só
+    # (re)processa miniaturas/imagens externas quando o post é resalvo.
+    if post_id:
+        try:
+            time.sleep(5)
+            blogger.posts().update(blogId=BLOGGER_ID, postId=post_id, body=corpo).execute()
+            print("  🔄 Re-save automático aplicado (equivalente a abrir e atualizar).")
+        except Exception as e_update:
+            print(f"  ⚠️  Re-save automático falhou (post já está publicado normalmente): {e_update}")
 
 
 def registrar_historico_texto(estado, titulo):
