@@ -215,22 +215,22 @@ ANGULOS_REFLEXAO_F3 = [
 # ═════════════════════════════════════════════════════════════
 
 ORDEM_INFO = {
-    "nome": "Nosso Templo",
+    "nome": "Nosso Templo BH",
     "bairro": "Glória, Belo Horizonte",
-    "fundador_referencia": "inspirado num mago conhecido da cena de ocultismo no YouTube/internet",
+    "fundador_referencia": "Nino Denani Grão Mago mestre do fogo, um mago conhecido da cena de ocultismo no YouTube/internet, Fundador do nosso templo SP (Matriz)",
     "ano_abertura_filial": 2024,
 }
 
 PERSONAGENS_ORDEM = [
-    {"nome": "Regulus", "papel": "mago sênior, referência técnica em Cabala"},
-    {"nome": "Frater A", "papel": "figura discreta e enigmática, fala pouco mas ensina muito nas entrelinhas"},
-    {"nome": "Pracy", "papel": "colega de turma, forte em alquimia prática"},
-    {"nome": "O Mago do Escritório", "papel": "apelido carinhoso de um colega que concilia magia com vida corporativa"},
-    {"nome": "A Maga Sofia", "papel": "referência em astrologia e mapas natais dentro da Ordem"},
-    {"nome": "O Mago Xamã Wesley", "papel": "traz influência de xamanismo e práticas de tambor/jornada"},
-    {"nome": "O Mago Nórdico Walter", "papel": "especialista em runas e tradição nórdica"},
-    {"nome": "A Maga Rafa", "papel": "colega avançada em tarot"},
-    {"nome": "O Rafa Zen", "papel": "traz meditação e budismo pra dentro da prática hermética"},
+    {"nome": "Regulus", "papel": "mago do Caos, referência técnica em Goétia"},
+    {"nome": "Frater A", "papel": "figura descontraida e enigmática, fala muito mas ensina muito nas entrelinhas"},
+    {"nome": "Pracy", "papel": "Mestre Maga, forte em alquimia prática, professora de tarot, uma das fundadoras do Nosso templo SP (matriz)"},
+    {"nome": "O Mago do Escritório", "papel": "apelido carinhoso de um colega que concilia magia com vida corporativa, um dos fundadores do nosso templo BH"},
+    {"nome": "A Maga Sofia", "papel": "referência em astrologia e tarologa, uma das fundadoras do nosso templo BH"},
+    {"nome": "O Mago Xamã Wesley", "papel": "traz influência de xamanismo e práticas de vivencias/jornada"},
+    {"nome": "O Mago Nórdico Walter", "papel": "especialista em assunça arquetipica e tradição nórdica, colega de turma"},
+    {"nome": "A Maga Rafa", "papel": "colega manipulção energetica, fogo azul, colega de turma"},
+    {"nome": "O Rafa Zen", "papel": "famoso mago do caos, aparece nas resenhas do nosso templo BH"},
 ]
 
 CURRICULO_ORDEM = [
@@ -238,10 +238,22 @@ CURRICULO_ORDEM = [
     "Cabala prática (Árvore da Vida, sephirot)",
     "Alquimia (simbólica, como processo de transformação interior)",
     "Tarot como sistema simbólico completo",
+    "Hermetismo pratico e no dia a dia",
+    "meditação sobre os quatros elementos"
+    "Manipulação energética",
+    "Assunção Arquetipa (Assunção forma Deus)",
+    "Abertura do ciruculo sagrado",
+    "Meditação da vela",
+    "meditação do palácio astral(como construir um palácio astral)",
     "Astrologia aplicada à prática mágica",
     "Ritual cerimonial (estrutura, ferramentas, elementos)",
     "Ética mágica — o tema mais debatido em sala",
     "Meditação e desenvolvimento da vontade",
+    "Visão remota",
+    "Percepção sensorial",
+    "Sagrado Anjo Guardião, Abramelin",
+    "os segredos da iniciação",
+    "Formação de um Mago",
 ]
 
 MARCOS_ORDEM = [
