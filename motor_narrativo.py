@@ -38,7 +38,7 @@ DENSIDADE_GLOBAL = 2.2
 FASES = {
     1: {
         "nome": "A Base — Catolicismo",
-        "idade_inicio": 0,
+        "idade_inicio": 6,
         "idade_fim": 19,          # transição ocorre ao completar a Crisma, aos 19
         "marco_encerramento": "crisma_concluida",
         "brackets": [
