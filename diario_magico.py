@@ -43,7 +43,7 @@ for nome, valor in [
         raise ValueError(f"Faltou configurar a variável/segredo: {nome}")
 
 groq_client = Groq(api_key=GROQ_API_KEY)
-MODELO_IA   = "llama-3.3-70b-versatile"
+MODELO_IA   = "openai/gpt-oss-120b"
 
 ARQUIVO_HISTORICO_TEXTO = "historico_magico.txt"
 IMAGEM_PADRAO = "https://upload.wikimedia.org/wikipedia/commons/thumb/9/95/News_icon.svg/640px-News_icon.svg.png"
