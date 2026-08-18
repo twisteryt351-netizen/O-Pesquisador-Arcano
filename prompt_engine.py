@@ -7,7 +7,7 @@ import random
 from conteudo_fases import *
 from motor_narrativo import FASES, registrar_marco
 
-PALAVRAS_MIN = 3400
+PALAVRAS_MIN = 2200
 
 # ─────────────────────────────────────────────────────────────
 #  HELPERS DE SELEÇÃO ANTI-REPETIÇÃO
