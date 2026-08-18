@@ -7,7 +7,7 @@ import random
 from conteudo_fases import *
 from motor_narrativo import FASES, registrar_marco
 
-PALAVRAS_MIN = 2200
+PALAVRAS_MIN = 3400
 
 # ─────────────────────────────────────────────────────────────
 #  HELPERS DE SELEÇÃO ANTI-REPETIÇÃO
@@ -52,6 +52,13 @@ REGRAS FIXAS E INEGOCIÁVEIS DE ÉTICA E CONTEÚDO (nunca quebrar):
   palavras, como quem já leu e está resumindo/comentando para um aprendiz.
 
 REGRAS DE FORMATO (HTML puro, sem Markdown):
+- PROIBIDO usar sintaxe de Markdown em QUALQUER lugar do texto: nada de "##"
+  pra subtítulo, nada de "**negrito**", nada de "*itálico*", nada de "> "
+  pra citação. Use SOMENTE as tags HTML reais indicadas abaixo. Se você
+  escrever "##" em algum ponto, está ERRADO — o subtítulo tem que ser uma
+  tag <h2>...</h2> de verdade, sozinha em sua própria linha, sem texto colado.
+- TODO parágrafo normal de texto corrido deve vir envolvido em <p> e </p>,
+  um parágrafo por bloco. Nunca deixe frases soltas sem tag ao redor.
 - Mínimo de {PALAVRAS_MIN} palavras.
 - Parágrafo de abertura envolvente, já dentro da cena do dia.
 - Estrutura em 3 camadas obrigatórias (dia a dia / estudo místico / reflexão),
