@@ -74,14 +74,27 @@ MOODBOARD_FASE = {
 # ─────────────────────────────────────────────────────────────
 #  GROQ (texto)
 # ─────────────────────────────────────────────────────────────
-def pedir_ia_groq(prompt, temperatura=0.78, max_tokens=6000):
-    response = groq_client.chat.completions.create(
-        messages=[{"role": "user", "content": prompt}],
-        model=MODELO_IA,
-        temperature=temperatura,
-        max_tokens=max_tokens,
-    )
-    return response.choices[0].message.content.strip()
+def pedir_ia_groq(prompt, temperatura=0.78, max_tokens=5500, tentativas=3):
+    kwargs = {
+        "messages": [{"role": "user", "content": prompt}],
+        "model": MODELO_IA,
+        "temperature": temperatura,
+        "max_tokens": max_tokens,
+    }
+    for tentativa in range(1, tentativas + 1):
+        try:
+            response = groq_client.chat.completions.create(**kwargs)
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            msg = str(e)
+            eh_rate_limit = "rate_limit_exceeded" in msg or "429" in msg or "413" in msg or "tokens per minute" in msg
+            if eh_rate_limit and tentativa < tentativas:
+                espera = 65  # a janela de TPM da Groq reseta por minuto
+                print(f"⚠️ Limite de tokens/min da Groq atingido (tentativa {tentativa}/{tentativas}). "
+                      f"Aguardando {espera}s pra janela resetar... ({msg[:150]})")
+                time.sleep(espera)
+            else:
+                raise
 
 
 # ─────────────────────────────────────────────────────────────
@@ -166,14 +179,20 @@ def gerar_artigo_diario(estado, max_tentativas=2):
                 palavras_atuais = contar_palavras_html(corpo)
                 print(f"  ✏️  Artigo curto ({palavras_atuais} palavras, meta {PALAVRAS_MIN}) "
                       f"— pedindo continuação...")
+                # manda só o FINAL do que já foi escrito (não o texto
+                # inteiro) — evita estourar o limite de tokens de entrada
+                contexto_final = corpo[-2000:]
                 prompt_continuar = f"""
 O texto abaixo terminou curto demais (menos de {PALAVRAS_MIN} palavras).
-Continue-o EXATAMENTE de onde parou, mesma voz em primeira pessoa de Derick,
-mesmo tom e formato HTML (pode abrir novos <h2> se fizer sentido). NÃO repita
-nada do que já foi escrito — só continue e aprofunde até fechar bem o dia.
+Abaixo está o TRECHO FINAL do que já foi escrito (não é o texto inteiro, só
+o final, pra você saber onde parou). Continue EXATAMENTE de onde esse
+trecho termina, mesma voz em primeira pessoa de Derick, mesmo tom e formato
+HTML (pode abrir novos <h2> se fizer sentido). NÃO repita nada, não recomece
+— só continue e aprofunde até fechar bem o dia.
 
-TEXTO ATÉ AGORA:
-{corpo}
+TRECHO FINAL DO QUE JÁ FOI ESCRITO:
+[...continua de: ]
+{contexto_final}
 """
                 continuacao = pedir_ia_groq(prompt_continuar, temperatura=0.78)
                 corpo = corpo + "\n" + normalizar_para_html(continuacao)
